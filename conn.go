@@ -25,6 +25,9 @@ type Conn struct {
 	closeChan         chan struct{} // close chanel
 	packetSendChan    chan Packet   // packet send chanel
 	packetReceiveChan chan Packet   // packeet receive chanel
+
+	// ensure close callback after all loop exit
+	waitGroup *sync.WaitGroup // wait for all loop quit
 }
 
 // ConnCallback is an interface of methods that are used as callbacks on a connection
@@ -49,6 +52,7 @@ func newConn(conn *net.TCPConn, srv *Server) *Conn {
 		closeChan:         make(chan struct{}),
 		packetSendChan:    make(chan Packet, srv.config.PacketSendChanLimit),
 		packetReceiveChan: make(chan Packet, srv.config.PacketReceiveChanLimit),
+		waitGroup:         &sync.WaitGroup{},
 	}
 }
 
@@ -74,6 +78,8 @@ func (c *Conn) Close() {
 		close(c.closeChan)
 		close(c.packetSendChan)
 		close(c.packetReceiveChan)
+
+		c.waitGroup.Wait()
 		c.conn.Close()
 		c.srv.callback.OnClose(c)
 	})
@@ -125,6 +131,7 @@ func (c *Conn) Do() {
 		return
 	}
 
+	c.waitGroup.Add(3)
 	asyncDo(c.handleLoop, c.srv.waitGroup)
 	asyncDo(c.readLoop, c.srv.waitGroup)
 	asyncDo(c.writeLoop, c.srv.waitGroup)
@@ -132,7 +139,10 @@ func (c *Conn) Do() {
 
 func (c *Conn) readLoop() {
 	defer func() {
-		recover()
+		c.waitGroup.Done()
+		if c.srv.config.Recover {
+			recover()
+		}
 		c.Close()
 	}()
 
@@ -158,7 +168,10 @@ func (c *Conn) readLoop() {
 
 func (c *Conn) writeLoop() {
 	defer func() {
-		recover()
+		c.waitGroup.Done()
+		if c.srv.config.Recover {
+			recover()
+		}
 		c.Close()
 	}()
 
@@ -183,7 +196,10 @@ func (c *Conn) writeLoop() {
 
 func (c *Conn) handleLoop() {
 	defer func() {
-		recover()
+		c.waitGroup.Done()
+		if c.srv.config.Recover {
+			recover()
+		}
 		c.Close()
 	}()
 

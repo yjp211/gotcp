@@ -7,6 +7,7 @@ import (
 )
 
 type Config struct {
+	Recover                bool   // print fatal stack, helpfull for debug
 	PacketSendChanLimit    uint32 // the limit of packet send channel
 	PacketReceiveChanLimit uint32 // the limit of packet receive channel
 }
