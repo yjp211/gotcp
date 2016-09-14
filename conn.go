@@ -90,6 +90,15 @@ func (c *Conn) IsClosed() bool {
 	return atomic.LoadInt32(&c.closeFlag) == 1
 }
 
+func (c *Conn) WritePacket(p Packet) (err error) {
+	if c.IsClosed() {
+		return ErrConnClosing
+	}
+
+	_, err = c.conn.Write(p.Serialize())
+	return
+}
+
 // AsyncWritePacket async writes a packet, this method will never block
 func (c *Conn) AsyncWritePacket(p Packet, timeout time.Duration) (err error) {
 	if c.IsClosed() {
