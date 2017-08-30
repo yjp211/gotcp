@@ -18,7 +18,8 @@ var (
 // Conn exposes a set of callbacks for the various events that occur on a connection
 type Conn struct {
 	srv               *Server
-	conn              *net.TCPConn  // the raw connection
+	conn              net.Conn      // the raw connection
+	addr              string        //client address
 	extraData         interface{}   // to save extra data
 	closeOnce         sync.Once     // close the conn, once, per instance
 	closeFlag         int32         // close flag
@@ -45,10 +46,11 @@ type ConnCallback interface {
 }
 
 // newConn returns a wrapper of raw conn
-func newConn(conn *net.TCPConn, srv *Server) *Conn {
+func newConn(conn net.Conn, srv *Server, addr string) *Conn {
 	return &Conn{
 		srv:               srv,
 		conn:              conn,
+		addr:              addr,
 		closeChan:         make(chan struct{}),
 		packetSendChan:    make(chan Packet, srv.config.PacketSendChanLimit),
 		packetReceiveChan: make(chan Packet, srv.config.PacketReceiveChanLimit),
@@ -67,8 +69,13 @@ func (c *Conn) PutExtraData(data interface{}) {
 }
 
 // GetRawConn returns the raw net.TCPConn from the Conn
-func (c *Conn) GetRawConn() *net.TCPConn {
+func (c *Conn) GetRawConn() net.Conn {
 	return c.conn
+}
+
+// GetClientAddr returns the raw net.TCPConn peer client address
+func (c *Conn) GetClientAddr() string {
+	return c.addr
 }
 
 // Close closes the connection

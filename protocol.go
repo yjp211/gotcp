@@ -9,5 +9,5 @@ type Packet interface {
 }
 
 type Protocol interface {
-	ReadPacket(conn *net.TCPConn) (Packet, error)
+	ReadPacket(conn net.Conn) (Packet, error)
 }
