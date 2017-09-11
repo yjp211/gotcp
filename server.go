@@ -105,6 +105,48 @@ func (s *Server) StartTcp(addr string, acceptTimeout time.Duration) {
 	}
 }
 
+func (s *Server) StartProxyTcp(addr string, acceptTimeout time.Duration) {
+	tcpAddr, err := net.ResolveTCPAddr("tcp4", addr)
+	if err != nil {
+		panic(err)
+	}
+
+	listener, err := net.ListenTCP("tcp", tcpAddr)
+	if err != nil {
+		panic(err)
+	}
+
+	proxyListener := &ProxyListener{Listener: listener}
+
+	s.waitGroup.Add(1)
+	defer func() {
+		proxyListener.Close()
+		s.waitGroup.Done()
+	}()
+
+	for {
+		select {
+		case <-s.exitChan:
+			return
+
+		default:
+		}
+
+		proxyListener.SetDeadline(time.Now().Add(acceptTimeout))
+
+		conn, err := proxyListener.AcceptTCP()
+		if err != nil {
+			continue
+		}
+
+		s.waitGroup.Add(1)
+		go func() {
+			newConn(conn, s, conn.RemoteAddr().String()).Do()
+			s.waitGroup.Done()
+		}()
+	}
+}
+
 func (s *Server) StartWs(addr string, path string) {
 	s.waitGroup.Add(1)
 	defer func() {
