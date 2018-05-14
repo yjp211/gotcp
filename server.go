@@ -3,6 +3,7 @@ package gotcp
 import (
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -99,7 +100,7 @@ func (s *Server) StartTcp(addr string, acceptTimeout time.Duration) {
 
 		s.waitGroup.Add(1)
 		go func() {
-			newConn(conn, s, conn.RemoteAddr().String()).Do()
+			newConn(conn, s, splitIp(conn.RemoteAddr().String())).Do()
 			s.waitGroup.Done()
 		}()
 	}
@@ -141,7 +142,7 @@ func (s *Server) StartProxyTcp(addr string, acceptTimeout time.Duration) {
 
 		s.waitGroup.Add(1)
 		go func() {
-			newConn(conn, s, conn.RemoteAddr().String()).Do()
+			newConn(conn, s, splitIp(conn.RemoteAddr().String())).Do()
 			s.waitGroup.Done()
 		}()
 	}
@@ -155,7 +156,7 @@ func (s *Server) StartWs(addr string, path string) {
 
 	http.Handle(path, websocket.Handler(func(conn *websocket.Conn) {
 		conn.PayloadType = websocket.BinaryFrame //这个非常非常重要
-		c := newConn(conn, s, conn.Request().RemoteAddr)
+		c := newConn(conn, s, splitIp(httpSourceIp(conn.Request())))
 		c.Do()
 		<-c.closeChan
 	}))
@@ -164,6 +165,24 @@ func (s *Server) StartWs(addr string, path string) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+var PROXY_HEADERS = []string{"X-Forwarded-For", "Proxy-Client-IP", "WL-Proxy-Client-IP", "HTTP_CLIENT_IP", "HTTP_X_FORWARDED_FOR"}
+
+//get source ip from http request
+func httpSourceIp(req *http.Request) string {
+	header := req.Header
+	for _, key := range PROXY_HEADERS {
+		ip := header.Get(key)
+		if len(ip) > 0 {
+			return ip
+		}
+	}
+	return req.RemoteAddr
+}
+
+func splitIp(addr string) string {
+	return strings.Split(addr, ":")[0]
 }
 
 // Stop stops service
