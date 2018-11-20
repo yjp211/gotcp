@@ -154,6 +154,18 @@ func (s *Server) StartWs(addr string, path string) {
 		s.waitGroup.Done()
 	}()
 
+	tcpAddr, err := net.ResolveTCPAddr("tcp4", addr)
+	if err != nil {
+		panic(err)
+	}
+
+	listener, err := net.ListenTCP("tcp", tcpAddr)
+	if err != nil {
+		panic(err)
+	}
+
+	srv := &http.Server{Addr: addr}
+
 	http.Handle(path, websocket.Handler(func(conn *websocket.Conn) {
 		conn.PayloadType = websocket.BinaryFrame //这个非常非常重要
 		c := newConn(conn, s, splitIp(httpSourceIp(conn.Request())))
@@ -161,10 +173,10 @@ func (s *Server) StartWs(addr string, path string) {
 		<-c.closeChan
 	}))
 
-	err := http.ListenAndServe(addr, nil)
-	if err != nil {
-		panic(err)
-	}
+	go srv.Serve(listener)
+
+	<-s.exitChan
+	srv.Shutdown(nil)
 }
 
 var PROXY_HEADERS = []string{"X-Forwarded-For", "Proxy-Client-IP", "WL-Proxy-Client-IP", "HTTP_CLIENT_IP", "HTTP_X_FORWARDED_FOR"}
