@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"golang.org/x/net/websocket"
+
+	proxyprotov2 "github.com/pires/go-proxyproto"
 )
 
 type Config struct {
@@ -146,6 +148,79 @@ func (s *Server) StartProxyTcp(addr string, acceptTimeout time.Duration) {
 			s.waitGroup.Done()
 		}()
 	}
+}
+
+func (s *Server) StartProxyV2Tcp(addr string, acceptTimeout time.Duration) {
+	tcpAddr, err := net.ResolveTCPAddr("tcp4", addr)
+	if err != nil {
+		panic(err)
+	}
+
+	listener, err := net.ListenTCP("tcp", tcpAddr)
+	if err != nil {
+		panic(err)
+	}
+
+	proxyListener := &proxyprotov2.Listener{Listener: listener}
+
+	s.waitGroup.Add(1)
+	defer func() {
+		proxyListener.Close()
+		s.waitGroup.Done()
+	}()
+
+	for {
+		select {
+		case <-s.exitChan:
+			return
+
+		default:
+		}
+
+		conn, err := proxyListener.Accept()
+		if err != nil {
+			continue
+		}
+
+		s.waitGroup.Add(1)
+		go func() {
+			newConn(conn, s, splitIp(conn.RemoteAddr().String())).Do()
+			s.waitGroup.Done()
+		}()
+	}
+}
+
+func (s *Server) StartProxyV2Ws(addr string, path string) {
+	s.waitGroup.Add(1)
+	defer func() {
+		s.waitGroup.Done()
+	}()
+
+	tcpAddr, err := net.ResolveTCPAddr("tcp4", addr)
+	if err != nil {
+		panic(err)
+	}
+
+	listener, err := net.ListenTCP("tcp", tcpAddr)
+	if err != nil {
+		panic(err)
+	}
+
+	proxyListener := &proxyprotov2.Listener{Listener: listener}
+
+	srv := &http.Server{Addr: addr}
+
+	http.Handle(path, websocket.Handler(func(conn *websocket.Conn) {
+		conn.PayloadType = websocket.BinaryFrame //这个非常非常重要
+		c := newConn(conn, s, splitIp(httpSourceIp(conn.Request())))
+		c.Do()
+		<-c.closeChan
+	}))
+
+	go srv.Serve(proxyListener)
+
+	<-s.exitChan
+	srv.Shutdown(nil)
 }
 
 func (s *Server) StartWs(addr string, path string) {
